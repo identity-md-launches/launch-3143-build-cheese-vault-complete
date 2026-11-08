@@ -1,0 +1,6 @@
+# Path budget: generated dependencies, task scratch/cache, and TS incremental cache only.
+**/node_modules/
+/test/scratch/
+/.cache/
+**/.npm/
+**/*.tsbuildinfo
