@@ -2,7 +2,7 @@
 
 ## Overview
 
-A cozy, premium farming dApp for people using Ethereum Sepolia wallets. The visual idea is a small golden hamster guarding a very real on-chain cheese vault. A cream canvas, chocolate ink, rounded display type and a custom 2.5D diorama carry the identity. Actual balances, actions and proof stay quieter and precise.
+A cozy, premium farming dApp for people using Ethereum Sepolia wallets. The visual idea is a small golden hamster guarding a very real on-chain cheese vault. A cream canvas, chocolate ink, rounded display type and a custom 2.5D diorama carry the identity. Actual balances, actions and proof stay quieter and precise. The hero retains its illustrated headline and required tagline, followed by one sentence naming Sepolia staking and the 15% withdrawal fee. The redundant hero footnote is removed; the illustration and chain overview follow in normal flow.
 
 `src/styles.css` is the token/style source of truth; `src/components.tsx` contains shared primitives. `src/App.tsx` composes the five pages. The home hero is a page-specific two-column composition, not a template to repeat above every tool page. Farm and Portfolio lead with positions and controls. One warm gold primary action competes with neutral secondary controls; the persistent wallet utility uses chocolate.
 
@@ -30,7 +30,7 @@ The implementation uses hex primitives mapped to semantic CSS custom properties.
 | `--color-warning-bg/text` | `#f8edcf` / `#795520` | Inactive rewards and blocked readiness |
 | `--color-error-bg/text` | `#f9e8e2` / `#9c3d2f` | Failed or rejected operations |
 
-Declared opaque foreground/background pairs were calculated, not visually estimated. Primary/page is 11.17:1; secondary/page 5.10:1; secondary/surface 5.33:1; secondary/sunken 4.64:1; primary/gold 7.41:1. Status pairs are above 5.6:1. Exact inputs/results are in `artifacts/declared-contrast.json`. These are source-pair measurements; rendered contrast, alpha-composited disabled controls and art overlays remain unverified because browser launch failed.
+Declared opaque foreground/background pairs were calculated, not visually estimated. Primary/page is 11.17:1; secondary/page 5.10:1; secondary/surface 5.33:1; secondary/sunken 4.64:1; primary/gold 7.41:1. Status pairs are above 5.6:1. Exact inputs/results are recorded in `artifacts/revision-validation.json`. These are source-pair measurements. The revision also measured the new proof evidence against its rendered surface: secondary text 5.332:1 and evidence link 11.672:1. Alpha-composited disabled controls and art overlays remain incompletely measured.
 
 ## Typography
 
@@ -54,7 +54,7 @@ Implemented breakpoints:
 - **640px and down:** hero, pools, portfolio and instructions become one column. The hero’s main action precedes its 240px illustration. Live stats form a 2×2 grid. Portfolio retains distinct per-asset fields. Proof statuses become a 2×2 grid. All navigation links remain accessible in a wrapping row. Dialogs become full-width bottom sheets with a 20px top clearance and safe-area bottom padding.
 - **370px and down:** navigation wraps with explicit gaps, surfaces narrow, position fields stack and secondary arrows are removed to preserve button labels.
 
-The hero artwork container clips decorative overflow so its oversized illustration cannot widen the viewport. Critical values and controls are never clipped. The first phone screen is designed to show the brand, product, explanatory line and “Explore Cheese Farm” before the illustration; **actual 390px screenshots and reflow remain unverified**. See the validation record rather than treating this design intent as a rendered observation.
+The hero artwork container clips decorative overflow so its oversized illustration cannot widen the viewport. Critical values and controls are never clipped. The first phone screen is designed to show the brand, product, explanatory line and “Explore Cheese Farm” before the illustration; **the final 390×844 screenshot confirms the primary CTA at y=459.25–509.25**. Chromium checked all five pages at 320, 390, 768, 1024 and 1440px without horizontal overflow. See `VALIDATION.md` for remaining browser limits.
 
 ## Elevation & Depth
 
@@ -79,10 +79,11 @@ The native dialog top layer provides real background inertness and sits over a t
 | `Modal` | `src/components.tsx` | Native `dialog.showModal()`, labeled title, focus restoration, Escape/backdrop close and one close button. Transaction signing/pending phases hold the dialog open while their flow is unresolved. |
 | `WalletControl`, `WalletSheet` | `src/wallet.tsx` | One header utility; discovered names/icons, Coinbase row, mobile app-browser links, pending/rejection and chain-switch states. |
 | `PoolCard` | `src/App.tsx` | Consistent per-asset summary and actions. Current allocation/status are live; unavailable and unconfigured are distinct. |
-| `TransactionModal`, `FeeBreakdown` | `src/TransactionModal.tsx` | Deposit/withdraw/claim, exact Max, approval, simulation, fee/gas review, signature, pending receipt, success/error and receipt retry. The nominal fee illustration never substitutes for the real quote. |
-| `ReadStatus` | `src/App.tsx` | Linked read block, refresh, unavailable and stale-update copy. |
+| `TransactionModal`, `FeeBreakdown` | `src/TransactionModal.tsx` | Deposit/withdraw/claim, exact Max, approval, simulation, fee/gas review, signature, pending receipt, success/error and receipt retry. Amount and Max both lock during review; Edit amount clears it and requires fresh simulation. The nominal fee illustration never substitutes for the real quote. |
+| `ReadStatus` | `src/App.tsx` | Linked read block, refresh, unavailable and stale-update copy. With `verifySources`, Refresh also retries all five independent source queries. |
+| `SourceVerificationFact` | `src/App.tsx`, `src/contracts/verification.ts` | Existing Proof fact cell; checking, verified and unavailable states; direct Sourcify evidence link and UTC observation time. Source claims are distinct from deployment/configuration/activation. `.source-verification` stacks details with 5px gaps and wraps long text; fact grids align content to the start. |
 
-Keyboard focus uses a 2px chocolate perimeter with 4px offset. A skip link focuses the current page’s main landmark without changing route. Hash navigation resets the scroll and focuses main. Native buttons/anchors/labels are used. Dynamic errors use `role="alert"`, pending and success use status announcements. Actual keyboard rendering and screen-reader sessions remain unperformed.
+Keyboard focus uses a 2px chocolate perimeter with 4px offset. A skip link focuses the current page’s main landmark without changing route. Hash navigation resets the scroll and focuses main. Native buttons/anchors/labels are used. Dynamic errors use `role="alert"`, pending and success use status announcements. The revision inspected the home CTA’s visible focus ring and exercised keyboard access to Edit amount plus dialog focus restoration in Chromium. Screen-reader sessions and native WebKit behavior remain unperformed.
 
 The hero has a slow 7-second, 7px vertical motion; small decorative sparkles vary opacity/scale. The receipt-triggered nibble is a short finite sequence. `prefers-reduced-motion: reduce` disables all animation, transitions and press movement, retaining written state. Interactive color/opacity/transform transitions are named and last 150ms; there is no `transition: all`. No animation claims a completed transaction before confirmation.
 
@@ -96,4 +97,4 @@ The hero has a slow 7-second, 7px vertical motion; small decorative sparkles var
 - Do not add kicker labels, extra font families, all-caps prose, generic yield figures, owner controls, or a second primary action color.
 - Use receipt events for completed bite visuals. Never let timer completion, a returned hash, a simulation, or a mocked test trigger a real success claim.
 
-The design follows the pinned Better Interface guide across accessibility, layout, writing, typography, colors and UI. Coverage, source findings, fixes and unresolved testing limitations are recorded separately in `artifacts/validation.md`; the design document is an implementation description, not an independent certification.
+The design follows the pinned Better Interface guide across accessibility, layout, writing, typography, colors and UI. Coverage, source findings, fixes and unresolved testing limitations are recorded separately in `VALIDATION.md` and `artifacts/revision-validation.json`; the design document is an implementation description, not an independent certification.

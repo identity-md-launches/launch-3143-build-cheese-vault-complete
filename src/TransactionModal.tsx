@@ -559,7 +559,9 @@ export function TransactionModal({
                     </label>
                     <button
                       className="text-button"
-                      disabled={busy || balance === undefined}
+                      disabled={
+                        busy || phase === "review" || balance === undefined
+                      }
                       onClick={setMax}
                     >
                       Max

@@ -483,14 +483,6 @@ main:focus {
   text-decoration: underline;
   text-underline-offset: 4px;
 }
-.hero-footnote {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-small);
-  color: var(--color-text-secondary);
-  margin-top: 21px;
-}
 .hero-art {
   overflow: clip;
   position: relative;
@@ -1403,6 +1395,7 @@ main:focus {
 }
 .contract-statuses > div {
   display: grid;
+  align-content: start;
   gap: 5px;
 }
 .contract-statuses dt {
@@ -1419,6 +1412,14 @@ main:focus {
   gap: 4px;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.source-verification {
+  display: grid;
+  gap: 5px;
+  overflow-wrap: anywhere;
+}
+.source-verification > .muted {
+  font-weight: 400;
 }
 .good-text {
   color: var(--color-success-text);
@@ -2110,9 +2111,6 @@ main:focus {
     line-height: 1.6;
     margin-bottom: 21px;
   }
-  .hero-description br {
-    display: none;
-  }
   .hero-buttons {
     flex-wrap: nowrap;
     gap: 20px;
@@ -2126,15 +2124,6 @@ main:focus {
   .hero-help {
     font-size: var(--text-small);
     gap: 5px;
-  }
-  .hero-footnote {
-    margin-top: 17px;
-    font-size: var(--text-small);
-    gap: 5px;
-  }
-  .hero-footnote svg {
-    width: 14px;
-    height: 14px;
   }
   .hero-art {
     min-height: 0;
@@ -2657,14 +2646,6 @@ main:focus {
   }
   .hero-help {
     min-height: 40px;
-  }
-  .hero-footnote {
-    gap: 5px;
-    align-items: flex-start;
-    max-width: 34ch;
-  }
-  .hero-footnote svg {
-    margin-top: 3px;
   }
   .stat {
     padding: 17px;

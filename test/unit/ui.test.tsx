@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { encodeAbiParameters, encodeEventTopics } from "viem";
-import { POOLS, TOKEN, publicClient } from "../../src/contracts/config";
+import { CONTROLLER, POOLS, TOKEN, publicClient } from "../../src/contracts/config";
+import { sourceEvidenceUrl } from "../../src/contracts/verification";
 import { sourceWithdrawal } from "../../src/contracts/math";
 import type { PoolState, Position, Protocol } from "../../src/contracts/read";
 
@@ -139,6 +140,14 @@ function wrap(children: ReactNode) {
 }
 beforeEach(() => {
   vi.restoreAllMocks();
+  // Explicit external verification fixture; no tests make network requests.
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify({
+    chainId: "11155111",
+    address: url.split("/").pop(),
+    match: null,
+    creationMatch: null,
+    runtimeMatch: null,
+  }), { status: 404 })));
   fixture.address = undefined;
   fixture.chainId = 11155111;
   fixture.protocol = protocol;
@@ -616,6 +625,63 @@ describe("transaction interactions with explicit fixtures, not real chain transa
 });
 
 describe("wallet and review safeguards", () => {
+  it.each(["deposit", "withdraw", "approve"] as const)(
+    "locks Max and the amount during %s review, and requires a fresh review after Edit amount",
+    async (kind) => {
+      fixture.address = account;
+      fixture.write.mockRejectedValue({ code: 4001 });
+      const action = kind === "approve" ? "deposit" : kind;
+      vi.mocked(publicClient.readContract).mockImplementation(async ({ functionName, args }) => {
+        if (functionName === "allowance") return (kind === "approve" ? 0n : 100n * unit) as never;
+        const units = args![0] as bigint;
+        if (functionName === "convertToShares") return (units * 1000n) as never;
+        const gross = units / 1000n;
+        return [gross, gross * 85n / 100n, gross * 14n / 100n, gross / 100n] as never;
+      });
+      const { container } = wrap(
+        <TransactionModal pool={POOLS[0]} initialAction={action} onClose={vi.fn()} openWallet={vi.fn()} />,
+      );
+      const input = screen.getByLabelText(action === "deposit" ? "Amount to deposit (CHEESE)" : "Shares to withdraw");
+      await userEvent.type(input, "1");
+      await userEvent.click(screen.getByRole("button", { name: `Review ${action}` }));
+      const confirmName = kind === "approve" ? "Approve" : `Confirm ${action}`;
+      await screen.findByRole("button", { name: confirmName });
+      const max = screen.getByRole("button", { name: "Max" });
+      expect(input).toBeDisabled();
+      expect(max).toBeDisabled();
+      const reviewed = container.querySelector(".transaction-review")!.textContent;
+      await userEvent.click(max);
+      expect(input).toHaveValue("1");
+      expect(container.querySelector(".transaction-review")!.textContent).toBe(reviewed);
+      await userEvent.click(screen.getByRole("button", { name: confirmName }));
+      await waitFor(() => expect(fixture.write).toHaveBeenCalledWith(expect.objectContaining({
+        functionName: kind, args: kind === "approve" ? [POOLS[0].address, unit] : [unit],
+      })));
+      // The rejected, intercepted signature made no broadcast. Review again, then edit.
+      await screen.findByRole("alert");
+      await userEvent.click(screen.getByRole("button", { name: `Review ${action}` }));
+      await userEvent.click(await screen.findByRole("button", { name: "Edit amount" }));
+      expect(max).toBeEnabled();
+      expect(input).toBeEnabled();
+      expect(container.querySelector(".transaction-review")).toBeNull();
+      await userEvent.click(max);
+      expect(input).toHaveValue(action === "deposit" ? "100" : "10000");
+      await userEvent.click(screen.getByRole("button", { name: `Review ${action}` }));
+      await screen.findByRole("button", { name: confirmName });
+      if (action === "withdraw") {
+        expect(screen.getByText("Gross withdrawal").nextElementSibling).toHaveTextContent("10 CHEESE");
+        expect(screen.getByText("Hamster Bite (15%)").nextElementSibling).toHaveTextContent("1.5 CHEESE");
+        expect(screen.getByText("You receive").nextElementSibling).toHaveTextContent("8.5 CHEESE");
+      } else if (kind === "deposit") {
+        expect(container.querySelector(".transaction-review")).toHaveTextContent("100,000 shares");
+      }
+      await userEvent.click(screen.getByRole("button", { name: confirmName }));
+      const units = (action === "deposit" ? 100n : 10000n) * unit;
+      await waitFor(() => expect(fixture.write).toHaveBeenLastCalledWith(expect.objectContaining({
+        functionName: kind, args: kind === "approve" ? [POOLS[0].address, units] : [units],
+      })));
+    },
+  );
   it("closes connected wallet options on Escape and restores focus", async () => {
     fixture.address = account;
     wrap(<WalletControl openWallet={vi.fn()} />);
@@ -710,7 +776,7 @@ describe("all five page routes and proof links", () => {
       screen.getByRole("link", { name: "Explore Cheese Farm" }),
     ).toHaveAttribute("href", "#/farm");
   });
-  it("exposes official job/source and all five exact Sepolia contract links without a verification claim", () => {
+  it("exposes official links and independently attempts source verification for all five addresses", async () => {
     location.hash = "#/proof";
     wrap(<App />);
     expect(
@@ -745,9 +811,40 @@ describe("all five page routes and proof links", () => {
         `https://sepolia.etherscan.io/address/${addresses[index]}`,
       ),
     );
-    expect(screen.getAllByText("Not checked")).toHaveLength(5);
+    await waitFor(() => expect(screen.getAllByText("Unavailable")).toHaveLength(5));
+    expect(fetch).toHaveBeenCalledTimes(5);
+    addresses.forEach((address) => expect(fetch).toHaveBeenCalledWith(
+      sourceEvidenceUrl(address as `0x${string}`),
+      expect.objectContaining({ cache: "no-store" }),
+    ));
+    expect(screen.getAllByRole("link", { name: "Sourcify evidence" })).toHaveLength(5);
+    expect(screen.getAllByText(/Checked \d{4}-\d{2}-\d{2}/)).toHaveLength(5);
+    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(
       screen.getAllByRole("button", { name: /Copy .* address/ }),
     ).toHaveLength(6);
+  });
+  it("refreshes source evidence independently of chain reads and never keeps a failed lookup green", async () => {
+    fixture.protocol = undefined;
+    location.hash = "#/proof";
+    wrap(<App />);
+    await waitFor(() => expect(screen.getAllByText("Unavailable")).toHaveLength(5));
+    vi.mocked(fetch).mockImplementation(async (url) => new Response(JSON.stringify({
+      chainId: "11155111", address: String(url).split("/").pop(),
+      match: "exact_match", creationMatch: "exact_match", runtimeMatch: "exact_match",
+    })));
+    const refresh = screen.getByRole("button", { name: "Refresh Sepolia contract data" });
+    await userEvent.click(refresh);
+    await waitFor(() => expect(screen.getAllByText("Verified")).toHaveLength(5));
+    expect(screen.getAllByText("Exact runtime match.")).toHaveLength(5);
+    expect(fetch).toHaveBeenCalledTimes(10);
+    for (const address of [TOKEN, CONTROLLER, ...POOLS.map((p) => p.address)])
+      expect(screen.getAllByRole("link", { name: "Sourcify evidence" }).some((link) => link.getAttribute("href") === sourceEvidenceUrl(address))).toBe(true);
+    expect(screen.getAllByText("Not verified")).toHaveLength(15);
+    vi.mocked(fetch).mockRejectedValue(new TypeError("Network unavailable"));
+    await userEvent.click(refresh);
+    await waitFor(() => expect(screen.getAllByText("Unavailable")).toHaveLength(5));
+    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(15);
   });
 });

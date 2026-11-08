@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Address } from "viem";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -44,6 +45,10 @@ import {
 } from "./contracts/config";
 import { compactAmount, displayAmount } from "./contracts/math";
 import { depositBlockReason, earnsRewards } from "./contracts/read";
+import {
+  loadSourceVerification,
+  sourceEvidenceUrl,
+} from "./contracts/verification";
 import { saveTransaction, useHistory, type HistoryEntry } from "./history";
 import type { Action } from "./contracts/transactions";
 
@@ -173,8 +178,17 @@ export default function App() {
     </>
   );
 }
-function ReadStatus({ compact = false }: { compact?: boolean }) {
+function ReadStatus({
+  compact = false,
+  verifySources = false,
+}: {
+  compact?: boolean;
+  verifySources?: boolean;
+}) {
   const q = useProtocol();
+  const cache = useQueryClient();
+  const sourceRequests = useIsFetching({ queryKey: ["source-verification"] });
+  const refreshing = q.isFetching || (verifySources && sourceRequests > 0);
   return (
     <div className={`read-status ${compact ? "read-status-compact" : ""}`}>
       <span className="read-status-text">
@@ -203,12 +217,18 @@ function ReadStatus({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <button
           className="text-button refresh"
-          disabled={q.isFetching}
-          onClick={() => q.refetch()}
+          disabled={refreshing}
+          onClick={() => {
+            void q.refetch();
+            if (verifySources)
+              void cache.invalidateQueries({
+                queryKey: ["source-verification"],
+              });
+          }}
           aria-label="Refresh Sepolia contract data"
         >
-          <RefreshCw size={14} className={q.isFetching ? "spin" : ""} />
-          {q.isFetching ? "Refreshing" : "Refresh"}
+          <RefreshCw size={14} className={refreshing ? "spin" : ""} />
+          {refreshing ? "Refreshing" : "Refresh"}
         </button>
       )}
     </div>
@@ -251,9 +271,8 @@ function Home({ manage }: { manage: Manage }) {
             Stake Your Cheese. Let the Hamsters Work.
           </p>
           <p className="hero-description">
-            A cozy Web3 farm on Ethereum Sepolia.
-            <br />
-            Deposit assets. Earn CHEESE. Mind the nibble.
+            Deposit testnet assets on Ethereum Sepolia to earn CHEESE, with a
+            15% withdrawal fee.
           </p>
           <div className="hero-buttons">
             <a className="button button-primary" href="#/farm">
@@ -264,10 +283,6 @@ function Home({ manage }: { manage: Manage }) {
               How to play
               <ArrowUpRight size={16} />
             </a>
-          </div>
-          <div className="hero-footnote">
-            <ShieldCheck size={16} />
-            <span>On-chain farming. Testnet assets. Tiny paws.</span>
           </div>
         </div>
         <div className="hero-art">
@@ -372,7 +387,7 @@ function Home({ manage }: { manage: Manage }) {
         <div className="section-heading">
           <div>
             <h2>Find your little goldmine.</h2>
-            <p>Three ways in. One very cheesy reward.</p>
+            <p>Choose CHEESE, ETH or configured sIMD.</p>
           </div>
           <a className="text-link" href="#/farm">
             Meet the farms
@@ -390,7 +405,7 @@ function Home({ manage }: { manage: Manage }) {
           <Hamster />
         </div>
         <div>
-          <h2>A little nibble. A fairer farm.</h2>
+          <h2>The 15% withdrawal fee</h2>
           <p>
             Every withdrawal has a 15% Hamster Bite. Normally, 14% stays in the
             farm and 1% goes to Treasury. You keep 85%.
@@ -1133,13 +1148,15 @@ function Proof() {
           <h2>The contracts behind the cozy.</h2>
           <p>Ethereum Sepolia · Chain ID 11155111</p>
         </div>
-        <ReadStatus />
+        <ReadStatus verifySources />
       </div>
       <Notice>
         Deployment, source verification, configuration and activation are
         separate facts. “Deployed” means bytecode is present. Source
-        verification must be checked on Etherscan; this site does not claim an
-        audit or certification.
+        verification is checked independently on Sourcify, with the observation
+        time below. An unavailable record does not mean unverified on Etherscan.
+        Refresh retries both lookups. Verification is not an audit or
+        certification.
       </Notice>
       <div className="contract-list">
         {contracts.map((contract, i) => (
@@ -1163,18 +1180,7 @@ function Proof() {
                 label="Deployed"
                 value={p ? p.deployed[contract.address] : undefined}
               />
-              <div>
-                <dt>Source verified</dt>
-                <dd>
-                  <a
-                    href={`${addressUrl(contract.address)}#code`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Not checked <ArrowUpRight size={13} />
-                  </a>
-                </dd>
-              </div>
+              <SourceVerificationFact address={contract.address} />
               <StatusFact label="Configured" value={contract.configured} />
               <StatusFact
                 label="Activated"
@@ -1218,6 +1224,42 @@ function Proof() {
         </section>
       )}
       <Allocation />
+    </div>
+  );
+}
+function SourceVerificationFact({ address }: { address: Address }) {
+  const q = useQuery({
+    queryKey: ["source-verification", address],
+    queryFn: ({ signal }) => loadSourceVerification(address, signal),
+    staleTime: 300_000,
+    retry: false,
+  });
+  const evidence = q.data;
+  return (
+    <div>
+      <dt>Source verified</dt>
+      <dd className="source-verification" aria-busy={q.isFetching}>
+        <span
+          role="status"
+          className={evidence?.status === "verified" ? "good-text" : "muted"}
+        >
+          {q.isFetching
+            ? "Checking…"
+            : evidence?.status === "verified"
+              ? "Verified"
+              : "Unavailable"}
+        </span>
+        <External href={sourceEvidenceUrl(address)}>Sourcify evidence</External>
+        {evidence && (
+          <>
+            <span className="muted">{evidence.detail}</span>
+            <time className="muted" dateTime={evidence.observedAt}>
+              Checked {evidence.observedAt.slice(0, 10)}{" "}
+              {evidence.observedAt.slice(11, 19)} UTC
+            </time>
+          </>
+        )}
+      </dd>
     </div>
   );
 }
